@@ -1,15 +1,18 @@
 local migration = require("__flib__.migration")
 
 local commons = require("scripts.commons")
+local runtime = require("scripts.runtime")
 
 local prefix = commons.prefix
 local tools = require("scripts.tools")
+local ccutils = require("scripts.ccutils")
 local display = require("scripts.display")
 local input = require("scripts.input")
 local build = require("scripts.build")
 
 local editor = require("scripts.editor")
 local inspectlib = require("scripts.inspect")
+local models_lib = require("scripts.models_lib")
 
 local debug = tools.debug
 local cdebug = tools.cdebug
@@ -654,6 +657,9 @@ local function on_entity_cloned(ev)
                 init_procinfo(dst_procinfo)
                 build.connect_all_iopoints(dst_procinfo)
                 editor.connect_energy(dst_procinfo)
+                if not dst_procinfo.is_packed then
+                    display.update_for_cloning(src_procinfo, dst_procinfo)
+                end
                 return
             end
         end
@@ -822,7 +828,7 @@ local function on_entity_settings_pasted(e)
         local dst_procinfo = get_procinfo(dst)
         ---@cast dst_procinfo -nil
 
-        editor.copy_from(dst_procinfo, src_procinfo, src_procinfo.is_packed)
+        models_lib.copy_from(dst_procinfo, src_procinfo, src_procinfo.is_packed)
         dst_procinfo.model = src_procinfo.model
         dst_procinfo.tick = src_procinfo.tick
         dst_procinfo.sprite1 = src_procinfo.sprite1
@@ -835,6 +841,8 @@ local function on_entity_settings_pasted(e)
         local dst = player.selected
         local src = player.entity_copy_source
 
+        ---@cast dst -nil
+        ---@cast src -nil
         if src.name == iopoint_name and dst.name == iopoint_name then
             local src_processor = find_processor(src)
             local dst_processor = find_processor(dst)
@@ -1126,7 +1134,8 @@ show_iopoint_label = function(player)
 
     local found_iopoint = player.selected
     local vars = get_vars(player)
-
+    if not found_iopoint then return end
+    
     local pos = found_iopoint.position
     local entities = found_iopoint.surface.find_entities_filtered {
         area = { { pos.x - 1, pos.y - 1 }, { pos.x + 1, pos.y + 1 } },
@@ -1384,6 +1393,20 @@ local function migration_1_0_25(data)
     end
 end
 
+local function migration_1_1_7(data)
+    for _, player in pairs(game.players) do
+        local vars = tools.get_vars(player)
+        if vars.procinfo and editor.close_editor_panel(player) then
+            editor.create_editor_panel(player, vars.procinfo)
+            ccutils.close_all(player)
+        end
+    end
+end
+
+local function migration_1_1_11()
+    display.update_processors()
+end
+
 local migrations_table = {
 
     ["1.0.7"] = migration_1_0_7,
@@ -1401,10 +1424,13 @@ local migrations_table = {
     ["1.0.14"] = migration_1_0_14,
     ["1.0.15"] = migration_1_0_15,
     ["1.0.17"] = migration_1_0_17,
-    ["1.0.25"] = migration_1_0_25
+    ["1.0.25"] = migration_1_0_25,
+    ["1.1.7"] = migration_1_1_7,
+    ["1.1.11"] = migration_1_1_11
 }
 
 local function on_configuration_changed(data)
+    runtime.initialize()
     migration.on_config_changed(data, migrations_table)
 end
 
@@ -1497,6 +1523,7 @@ local function destroy_all()
     end
     game.print("#processor=" .. count)
 end
+
 
 commands.add_command("compaktcircuit_purge", { "compaktcircuit_purge_cmd" },
     function(e) purge(e.player_index) end)

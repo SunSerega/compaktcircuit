@@ -99,6 +99,19 @@ data:extend(
 			default_value = false,
 			order = "ja"
 		},
-	
+		{
+			type = "bool-setting",
+			name = prefix .. "-autosave",
+			setting_type = "runtime-per-user",
+			default_value = true,
+			order = "ka"
+		},
+		{
+			type = "bool-setting",
+			name = prefix .. "-allow-external",
+			setting_type = "runtime-global",
+			default_value = false,
+			order="la"
+		},
 
 })

@@ -1,4 +1,54 @@
 ---------------------------------------------------------------------------------------------------
+Version: 1.1.15
+Date: 26.08.2024
+  Bugfixes:
+    - Fix another crash on new game
+---------------------------------------------------------------------------------------------------
+Version: 1.1.14
+Date: 26.08.2024
+  Bugfixes:
+    - Fix crash on new game
+---------------------------------------------------------------------------------------------------
+Version: 1.1.13
+Date: 25.08.2024
+  Bugfixes:
+    - Fix multiplayer desync
+---------------------------------------------------------------------------------------------------
+Version: 1.1.12
+Date: 20.08.2024
+  Bugfixes:
+    - Fix crash on migrations
+---------------------------------------------------------------------------------------------------
+Version: 1.1.11
+Date: 19.08.2024
+  Bugfixes:
+    - Fix crash when packing / unpacking
+---------------------------------------------------------------------------------------------------
+Version: 1.1.10
+Date: 04.08.2024
+  Changes:
+    - Add Nullius compatibility
+  Bugfixes:
+    - Fix crash with display on a spacehip in space exploration
+---------------------------------------------------------------------------------------------------
+Version: 1.1.9
+Date: 03.08.2024
+  Changes:
+    - Display components now work in non-packed mode
+    - Add a setting to allow any entity inside a processor. The entity will only work in non-packed mode and copy/paste/blueprint cannot copy the internal properties of this entity.
+    - In a input component, adding a "*" in front of label disable the addition of the name of processors in the property form.
+---------------------------------------------------------------------------------------------------
+Version: 1.1.8
+Date: 31.07.2024
+  Bugfixes:
+    - Fix crash on copy/paste
+---------------------------------------------------------------------------------------------------
+Version: 1.1.7
+Date: 25.06.2024
+  Changes:
+    - Change interface to have floating panels
+    - Add autosave setting to automatically save a panel when it is closed (no need to click "Save & Close" to save parameters)
+---------------------------------------------------------------------------------------------------
 Version: 1.1.6
 Date: 08.06.2024
   Bugfixes:

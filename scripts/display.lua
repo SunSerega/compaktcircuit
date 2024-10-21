@@ -125,7 +125,9 @@ local function field_to_number(field)
     return tonumber(text)
 end
 
-function display.get_frame(player) return player.gui.left[frame_name] end
+---@param player LuaPlayer
+---@return LuaGuiElement
+function display.get_frame(player) return player.gui.screen[frame_name] end
 
 ---@param rt DisplayRuntime
 local function remove_source(rt)
@@ -196,7 +198,6 @@ local field_width = 80
 ---@param initial_color integer?
 ---@return LuaGuiElement
 local function create_color_field(ptable, props, name, initial_color)
-
     local label = ptable.add {
         type = "label",
         caption = { np(name) }
@@ -327,12 +328,11 @@ function display.add_properties(type, ptable, props)
             name = "signal"
         }
         if props.signal then
-            field.elem_value = tools.sprite_to_signal(props.signal) --[[@as SignalID]]
+            field.elem_value = tools.sprite_to_signal(tools.check_sprite(props.signal, "virtual-signal/signal-A")) --[[@as SignalID]]
         end
     end
 
     if type == display_text_type then
-
         field = create_color_field(ptable, props, "text-color", props.color)
 
         label = ptable.add { type = "label", caption = { np("text") } }
@@ -434,7 +434,7 @@ function display.add_properties(type, ptable, props)
             state = props.has_frame
         }
         field.style.width = field_width
-        
+
         label = ptable.add {
             type = "label",
             caption = { np("multi-signal-has-background") }
@@ -473,32 +473,25 @@ end
 ---@param entity LuaEntity
 function display.open(player, entity)
     if not entity or not entity.valid or entity.name ~= display_name then
-        display.close(player)
         return
     end
 
     player.opened = nil
     local vars = get_vars(player)
-    if vars.display_entity and vars.display_entity.valid and vars.display_entity ==
-        entity then
+    if vars.display_entity and vars.display_entity.valid and vars.display_entity == entity then
         return
     end
 
-    display.close(player)
+    ccutils.close_all(player)
     vars.display_entity = entity
 
-    local outer_frame = player.gui.left.add {
-        type = "frame",
-        direction = "vertical",
-        name = frame_name,
-        caption = { np("title") }
-    }
-
-    local frame = outer_frame.add {
-        type = "frame",
-        direction = "vertical",
-        style = "inside_shallow_frame_with_padding"
-    }
+    local outer_frame, frame = tools.create_standard_panel(player, {
+        panel_name = frame_name,
+        title = { np("title") },
+        is_draggable = true,
+        create_inner_frame = true,
+        close_button_name = np("close")
+    })
 
     -- Load previous
     ---@type Display?
@@ -535,13 +528,29 @@ function display.open(player, entity)
     local type = ftype.selected_index
     display.add_properties(type, ptable, props)
 
-    local b = frame.add {
+    local line = frame.add { type = "line" }
+
+    local valid_flow = frame.add { type = "flow", direction = "horizontal" }
+    local empty = valid_flow.add { type = "empty-widget" }
+    empty.style.horizontally_stretchable = true
+    local b = valid_flow.add {
         type = "button",
         caption = { button_prefix .. ".save_and_close" },
-        name = np("ok")
+        name = np("ok"),
+        style = "confirm_button"
     }
     b.style.top_margin = 10
+    local edit_location = vars.edit_location
+    if edit_location then
+        outer_frame.location = edit_location
+    else
+        outer_frame.force_auto_center()
+    end
 end
+
+tools.on_gui_click(np("close"), function(e)
+    display.close(game.players[e.player_index], true)
+end)
 
 tools.on_named_event(np("display_type"),
     defines.events.on_gui_selection_state_changed,
@@ -558,13 +567,22 @@ tools.on_named_event(np("display_type"),
     end)
 
 ---@param player LuaPlayer
-function display.close(player)
+---@param nosave boolean?
+function display.close(player, nosave)
     local frame = display.get_frame(player)
     if frame then
+        if not nosave and player.mod_settings[prefix .. "-autosave"].value then
+            display.get_edition(player)
+        end
         local vars = tools.get_vars(player)
-
+        vars.edit_location = frame.location
         vars.display_entity = nil
         frame.destroy()
+    end
+
+    local panel = player.gui.left[frame_name]
+    if panel then
+        panel.destroy()
     end
 end
 
@@ -633,7 +651,7 @@ function display.mine(entity)
         local vars = tools.get_vars(player)
         if vars.display_entity and vars.display_entity.valid and
             vars.display_entity.unit_number == entity.unit_number then
-            display.close(player)
+            display.close(player, true)
         end
     end
 end
@@ -665,6 +683,43 @@ function display.register(entity, props)
     end
     if props.is_internal then
         display_info.internal = display.start(props, entity)
+    else
+        local procinfo = global.surface_map[entity.surface.name]
+        if procinfo then
+            if not procinfo.is_packed then
+                display_info.internal = display.start(props, entity)
+            end
+        end
+    end
+end
+
+---@param entity LuaEntity
+function display.restart(entity)
+    local display_info = global.display_infos[entity.unit_number]
+    if not display_info then return end
+    local props = display_info.props
+
+    if display_info.internal then
+        remove_source(display_info.internal)
+        display_info.internal = nil
+    end
+    if props.is_internal then
+        display_info.internal = display.start(props, entity)
+    else
+        local procinfo = global.surface_map[entity.surface.name]
+        if procinfo then
+            if not procinfo.is_packed then
+                display_info.internal = display.start(props, entity)
+            end
+        end
+    end
+end
+
+---@param procinfo ProcInfo
+function display.restore(procinfo)
+    local inputs = procinfo.surface.find_entities_filtered { name = display_name }
+    for _, input in pairs(inputs) do
+        display.restart(input)
     end
 end
 
@@ -728,7 +783,7 @@ local function on_gui_confirmed(e)
     if not e.element.valid then return end
     if not tools.is_child_of(e.element, frame_name) then return end
     display.get_edition(player)
-    display.close(player)
+    display.close(player, true)
 end
 
 tools.on_event(defines.events.on_gui_opened, on_gui_opened)
@@ -747,14 +802,14 @@ function display.start(tags, source)
     local rt = { props = tags, source = source }
     rt.id = source.unit_number
     display_runtime:add(rt)
-    display_runtime.boost = true
+    display_runtime.gdata.boost = true
     return rt
 end
 
 ---@param rt DisplayRuntime
 local function is_source_invalid(rt)
     ---@cast rt SpriteDisplayRuntime
-    if not rt.source.valid then
+    if not rt.source.valid or (rt.proc and not rt.proc.valid) then
         remove_source(rt)
         return true
     end
@@ -764,25 +819,46 @@ end
 ---@param rt DisplayRuntime
 ---@return LuaEntity?
 local function find_source(rt)
+    if not rt.source or not rt.source.valid then
+        return nil
+    end
     if rt.props.is_internal then
         return rt.source
     else
         local rtpos = rt.source.position
-        local entities = rt.source.surface.find_entities_filtered {
-            name = { processor_name, processor_name_1x1 },
-            position = rtpos,
-            radius = 1
-        }
-        if #entities == 0 then return nil end
+        local surface = rt.source.surface
+        local surface_name = surface.name
 
-        for _, p in pairs(entities) do
-            if rtpos.x >= p.position.x - p.tile_width / 2 and rtpos.x <=
-                p.position.x + p.tile_width / 2 and rtpos.y >= p.position.y -
-                p.tile_height / 2 and rtpos.y <= p.position.y +
-                p.tile_height / 2 then
-                return p
+        if not string.find(surface_name, '^proc_') then
+            local entities = surface.find_entities_filtered {
+                name = { processor_name, processor_name_1x1 },
+                position = rtpos,
+                radius = 1
+            }
+            if #entities == 0 then return nil end
+
+            for _, p in pairs(entities) do
+                if rtpos.x >= p.position.x - p.tile_width / 2 and rtpos.x <=
+                    p.position.x + p.tile_width / 2 and rtpos.y >= p.position.y -
+                    p.tile_height / 2 and rtpos.y <= p.position.y +
+                    p.tile_height / 2 then
+                    return p
+                end
+            end
+        else
+            while true do
+                local procinfo = global.surface_map[surface_name]
+                if not procinfo or not procinfo.processor.valid or not procinfo.processor.surface.valid then return nil end
+
+                surface_name = procinfo.processor.surface.name
+                if not string.find(surface_name, '^proc_') then
+                    rt.proc = procinfo.processor
+                    return procinfo.processor
+                end
             end
         end
+
+        -- try
         return nil
     end
 end
@@ -790,10 +866,7 @@ end
 ---@param rt EntityWithIdAndProcess
 local function process_signal(rt)
     ---@cast rt SignalDisplayRuntime
-    if not rt.source.valid then
-        remove_source(rt)
-        return
-    end
+    if is_source_invalid(rt) then return end
 
     if rt.hidden then
         if (rt.source.get_merged_signal(vs_hide) == 0) then
@@ -1036,8 +1109,8 @@ local function process_text(rt)
     end
 
     local function clear()
-        if rt.renderid then 
-            rendering.destroy(rt.renderid) 
+        if rt.renderid then
+            rendering.destroy(rt.renderid)
             rt.renderid = nil
         end
         if rt.renderids then
@@ -1078,12 +1151,11 @@ local function process_text(rt)
         rt.lines = lines
     end
 
-    local x, y, scale, color_index    
+    local x, y, scale, color_index
     x = props.offsetx or 0
     y = props.offsety or 0
     scale = props.scale or 1
     if signals then
-
         for _, signal in pairs(signals) do
             local name = signal.signal.name
             if name == v_hide then
@@ -1290,6 +1362,10 @@ local multi_signals_delta = {
 ---@param rt EntityWithIdAndProcess
 local function process_multisignal(rt)
     ---@cast rt MultiSignalRuntime
+    if is_source_invalid(rt) then
+        rt.signals = nil
+        return
+    end
 
     local function clear()
         if rt.renderids then
@@ -1297,12 +1373,6 @@ local function process_multisignal(rt)
             rt.renderids = nil
         end
         rt.signals = nil
-    end
-
-    if not rt.source.valid then
-        remove_source(rt)
-        rt.signals = nil
-        return
     end
 
     if rt.hidden then
@@ -1552,7 +1622,10 @@ end
 ---@type table<int, fun(DisplayRuntime) >
 local process_table = {
 
-    process_signal, process_sprite, process_text, process_meta,
+    process_signal,
+    process_sprite,
+    process_text,
+    process_meta,
     process_multisignal
 }
 
@@ -1565,7 +1638,7 @@ local function process_display(rt)
         display_runtime.map[rt.id] = nil
         rt.id = rt.source.unit_number
         display_runtime.map[rt.id] = rt
-        display_runtime.currentid = nil
+        display_runtime.gdata.currentid = nil
         return
     end
 
@@ -1639,8 +1712,44 @@ tools.on_event(defines.events.on_entity_settings_pasted,
 --------------------
 
 function display.load_disable_config()
-    display_runtime.disabled = settings.global[prefix .. "-disable-display"]
-        .value --[[@as boolean]]
+    display_runtime.disabled = settings.global[prefix .. "-disable-display"].value --[[@as boolean]]
+end
+
+local saved_fields = {
+    "id", "process", "props", "source"
+}
+
+local saved_field_map = {}
+for _, name in pairs(saved_fields) do
+    saved_field_map[name] = true
+end
+
+---@param src_proc ProcInfo
+---@param dst_proc ProcInfo
+function display.update_for_cloning(src_proc, dst_proc)
+    for _, rt in pairs(display_runtime.map) do
+        ---@cast rt DisplayRuntime
+        if rt.proc and rt.proc.valid and rt.proc.unit_number == src_proc.processor.unit_number then
+            local to_remove = {}
+            for name, _ in pairs(rt) do
+                if not saved_field_map[name] then
+                    table.insert(to_remove, name)
+                end
+            end
+            for _, name in pairs(to_remove) do
+                rt[name] = nil
+            end
+        end
+    end
+end
+
+function display.update_processors()
+    if display_runtime.map then
+        for _, rt in pairs(display_runtime.map) do
+            ---@cast rt DisplayRuntime
+            find_source(rt)
+        end
+    end
 end
 
 -- #endregion
